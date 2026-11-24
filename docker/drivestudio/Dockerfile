@@ -24,3 +24,7 @@ RUN pip install --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.gi
 RUN cd third_party/smplx && pip install -e .
 
 ENV PYTHONPATH=/opt/drivestudio
+
+# imageio-ffmpeg 내장 바이너리에는 H.264 인코더가 없어 평가 영상 저장이 실패한다 → 시스템 ffmpeg 사용
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
