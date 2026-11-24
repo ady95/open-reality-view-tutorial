@@ -19,7 +19,7 @@ WORKDIR /opt/drivestudio
 RUN grep -vE '^(--extra-index-url|torch==|torchvision==)' requirements.txt > /tmp/req.txt \
     && pip install -r /tmp/req.txt nuscenes-devkit  # matplotlib==3.5.3 고정과 맞는 devkit 버전을 pip가 고른다
 RUN pip install --no-build-isolation git+https://github.com/nerfstudio-project/gsplat.git@v1.3.0
-RUN pip install --no-build-isolation git+https://github.com/facebookresearch/pytorch3d.git@v0.7.8
+RUN pip install --no-build-isolation git+https://github.com/facebookresearch/pytorch3d.git@v0.7.7
 RUN pip install --no-build-isolation git+https://github.com/NVlabs/nvdiffrast.git@v0.3.3
 RUN cd third_party/smplx && pip install -e .
 
