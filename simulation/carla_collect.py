@@ -23,13 +23,13 @@ from PIL import Image
 W, H = 800, 450  # 입력 카메라: nuScenes 1600x900의 절반
 
 # CARLA는 왼손 좌표계: x 앞, y 오른쪽, z 위 (nuScenes 자차 좌표와 y 부호가 반대)
-# (이름, x, y, z, yaw, fov) — nuScenes 장착 위치를 참고해 배치
+# (이름, x, y, z, yaw, fov) — nuScenes 장착 위치를 참고해 배치. CARLA 차량 원점은 차체 중앙(바닥)
 INPUT_CAMS = [
     ("CAM_FRONT_LEFT", 1.5, -0.5, 1.5, -55, 70),
     ("CAM_FRONT", 1.7, 0.0, 1.5, 0, 70),
     ("CAM_FRONT_RIGHT", 1.5, 0.5, 1.5, 55, 70),
     ("CAM_BACK_LEFT", 1.0, -0.5, 1.6, -110, 70),
-    ("CAM_BACK", 0.0, 0.0, 1.6, 180, 90),
+    ("CAM_BACK", -2.4, 0.0, 1.2, 180, 90),  # 차량 원점이 차체 중앙이므로 뒤 범퍼 쪽으로
     ("CAM_BACK_RIGHT", 1.0, 0.5, 1.6, 110, 70),
 ]
 CHASE = dict(x=-7.0, z=3.5, pitch=-18.0, fov=90, w=800, h=450)
