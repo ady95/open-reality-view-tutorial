@@ -14,6 +14,8 @@ RUN apt-key del 7fa2af80 2>/dev/null; rm -f /etc/apt/sources.list.d/cuda.list /e
 RUN pip install timm==0.3.2 opencv-python-headless==4.5.5.64 attrs tqdm imageio scikit-image omegaconf gdown \
     && pip install mmcv-full==1.2.7
 RUN git clone https://github.com/NVlabs/SegFormer /opt/SegFormer && cd /opt/SegFormer && pip install .
+# 베이스 이미지의 numpy 1.19와 맞는 matplotlib으로 고정 (최신 matplotlib은 numpy>=1.20 요구)
+RUN pip install "matplotlib<3.4"
 # 공식 체크포인트(Cityscapes b5). DriveStudio 문서의 백업 링크를 사용
 RUN mkdir -p /opt/SegFormer/pretrained && cd /opt/SegFormer/pretrained \
     && gdown 1e7DECAH0TRtPZM6hTqRGoboq1XPqSmuj -O segformer.b5.1024x1024.city.160k.pth
