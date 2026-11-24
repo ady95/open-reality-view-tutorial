@@ -64,6 +64,7 @@ def main():
     ap.add_argument("--npc", type=int, default=30)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="data/carla/run0")
+    ap.add_argument("--nosave", action="store_true", help="저장하지 않고 시뮬레이션·센서 수신 속도만 잰다")
     args = ap.parse_args()
     random.seed(args.seed)
 
@@ -132,6 +133,9 @@ def main():
                 continue
             if t_start is None:
                 t_start = time.perf_counter()
+            if args.nosave:
+                saved += 1
+                continue
             fdir = os.path.join(args.out, "frames", f"{frame:08d}")
             os.makedirs(fdir, exist_ok=True)
             for name, d in data.items():
@@ -150,6 +154,9 @@ def main():
             saved += 1
         wall = time.perf_counter() - t_start
         meta_f.close()
+        if args.nosave:
+            print(f"[nosave] timesteps {saved} | mismatched {mismatched} | wall {wall:.1f} s | {saved / wall:.2f} timesteps/s")
+            return
         size = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(args.out) for f in fs)
         print(f"saved timesteps {saved} | mismatched {mismatched} | wall {wall:.1f} s "
               f"| {saved / wall:.2f} timesteps/s | disk {size / 2**20:.0f} MiB ({size / saved / 2**20:.2f} MiB/timestep)")
