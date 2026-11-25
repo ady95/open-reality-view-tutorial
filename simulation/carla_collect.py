@@ -63,6 +63,7 @@ def main():
     ap.add_argument("--dt", type=float, default=0.1, help="시뮬레이션 고정 시간 간격(초)")
     ap.add_argument("--npc", type=int, default=30)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--weather", default=None, help="예: ClearNoon, CloudySunset. carla.WeatherParameters의 프리셋 이름")
     ap.add_argument("--out", default="data/carla/run0")
     ap.add_argument("--nosave", action="store_true", help="저장하지 않고 시뮬레이션·센서 수신 속도만 잰다")
     args = ap.parse_args()
@@ -71,7 +72,10 @@ def main():
     client = carla.Client(args.host, args.port)
     client.set_timeout(120.0)
     world = client.load_world(args.town) if args.town else client.get_world()
-    print("server", client.get_server_version(), "| client", client.get_client_version(), "| map", world.get_map().name)
+    if args.weather:
+        world.set_weather(getattr(carla.WeatherParameters, args.weather))
+    print("server", client.get_server_version(), "| client", client.get_client_version(),
+          "| map", world.get_map().name, "| weather", args.weather or "current")
 
     original = world.get_settings()
     settings = world.get_settings()
@@ -115,7 +119,8 @@ def main():
 
         os.makedirs(os.path.join(args.out, "frames"), exist_ok=True)
         meta_f = open(os.path.join(args.out, "meta.jsonl"), "w")
-        json.dump(dict(cameras=meta_cam, dt=args.dt, map=world.get_map().name), open(os.path.join(args.out, "rig.json"), "w"), indent=1)
+        json.dump(dict(cameras=meta_cam, dt=args.dt, map=world.get_map().name, weather=args.weather, seed=args.seed),
+open(os.path.join(args.out, "rig.json"), "w"), indent=1)
 
         saved, mismatched, t_start = 0, 0, None
         for i in range(args.warmup + args.ticks):
