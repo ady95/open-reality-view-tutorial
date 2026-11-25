@@ -48,7 +48,9 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fb4c8);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.3, 2000);
-camera.up.set(0, 0, 1);  // 월드 좌표는 z가 위
+// DriveStudio 월드 좌표는 첫 카메라 기준(OpenCV 축)이라 z가 위가 아니다. 자차 z축(위)을 월드에서 구한다
+const up = new THREE.Vector3().setFromMatrixColumn(poses[0], 2).normalize();
+camera.up.copy(up);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enabled = false;
 
@@ -78,9 +80,11 @@ for (const x of [0, 2.85]) for (const y of [-0.82, 0.82]) {
 }
 ego.matrixAutoUpdate = false;
 scene.add(ego);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+hemi.position.copy(up);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-sun.position.set(-0.4, 0.3, 0.87);
+sun.position.copy(up).multiplyScalar(10);
 scene.add(sun);
 
 // 추격 카메라: 자차 기준 오프셋 + 아래로 숙임. OpenCV 카메라 축 → three.js 카메라 축(y·z 반전)

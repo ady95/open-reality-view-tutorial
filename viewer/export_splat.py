@@ -36,10 +36,15 @@ def main():
     alpha = 1 / (1 + np.exp(-bg["_opacities"].numpy()[:, 0]))
 
     # 궤적 근처·충분히 불투명한 가우시안만 남긴다 (먼 하늘 쪽 랜덤 점 제거)
-    traj = np.array(json.load(open(args.traj))["ego_to_world"])[:, :3, 3]
+    # DriveStudio 월드 좌표는 첫 카메라 기준(OpenCV 축)이라 z가 위가 아니다. 위 방향은 자차 z축에서 구한다
+    poses = np.array(json.load(open(args.traj))["ego_to_world"])
+    up = poses[:, :3, 2].mean(0)
+    up /= np.linalg.norm(up)
     d2 = np.full(len(xyz), np.inf)
-    for p in traj[::5]:
-        d2 = np.minimum(d2, ((xyz[:, :2] - p[:2]) ** 2).sum(1))
+    for p in poses[::5, :3, 3]:
+        d = xyz - p
+        d -= np.outer(d @ up, up)  # 수평 거리만 본다
+        d2 = np.minimum(d2, (d ** 2).sum(1))
     keep = (d2 < args.radius ** 2) & (alpha > args.min_opacity)
     # 보이는 기여가 큰 것부터 저장 (뷰어가 앞부분만 읽어도 형태가 잡힌다)
     order = np.argsort(-(scale.prod(1) * alpha)[keep])
