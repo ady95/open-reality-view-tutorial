@@ -28,15 +28,20 @@ CHASE_OFFSET = np.array([-7.0, 0.0, 3.5])  # 자차 기준: 뒤 7m, 위 3.5m
 CHASE_PITCH_DEG = 18.0
 
 
-def chase_extrinsic():
+# 03-6 비교용 프리셋: (자차 기준 x, z 오프셋[m], 숙임각[도], 가로 화각[도])
+# dashsplat: 차 중심(뒷바퀴 축에서 약 1.4m 앞) 뒤 15.5m·노면 위 5.5m, 11.6도, 수직 50도(16:9에서 가로 약 79.3도)
+CHASE_PRESETS = {"book": (-7.0, 3.5, 18.0, 90.0), "dashsplat": (-14.1, 5.5, 11.6, 79.3)}
+
+
+def chase_extrinsic(offset=CHASE_OFFSET, pitch_deg=CHASE_PITCH_DEG):
     """추격 카메라 → 자차 변환 (OpenCV 카메라 축, nuScenes 자차 좌표계). 02-3과 같은 정의."""
-    p = np.radians(CHASE_PITCH_DEG)
+    p = np.radians(pitch_deg)
     z_axis = np.array([np.cos(p), 0.0, -np.sin(p)])
     x_axis = np.array([0.0, -1.0, 0.0])
     y_axis = np.cross(z_axis, x_axis)
     T = np.eye(4)
     T[:3, :3] = np.stack([x_axis, y_axis, z_axis], axis=1)
-    T[:3, 3] = CHASE_OFFSET
+    T[:3, 3] = offset
     return T
 
 
@@ -96,10 +101,11 @@ def main():
     ap.add_argument("--nusc_root", default="data/nuscenes/raw")
     ap.add_argument("--scene_name", default="scene-0061")
     ap.add_argument("--out", default="/work/outputs/03-2")
-    ap.add_argument("--fov", type=float, default=90.0)
+    ap.add_argument("--preset", choices=sorted(CHASE_PRESETS), default="book", help="추격 카메라 프리셋 (03-6)")
     ap.add_argument("--width", type=int, default=800)
     ap.add_argument("--height", type=int, default=450)
     ap.add_argument("--save_frames", default="0,95,190")
+    ap.add_argument("--traj_json", default=None, help="프레임별 자차 자세(월드 좌표)를 JSON으로 저장 (03-6 웹 뷰어)")
     ap.add_argument("--png_dir", default=None, help="추격 시점 전 프레임을 PNG로 저장 (03-5 Difix 입력)")
     ap.add_argument("--heldout_dir", default=None,
                     help="학습에서 뺀 시점의 렌더/원본 쌍을 저장 (03-5 정량 평가). 저장 후 종료")
@@ -122,7 +128,15 @@ def main():
         return
 
     front_c2w = dataset.pixel_source.camera_data[0].cam_to_worlds.to(device)  # cam 0 = CAM_FRONT
-    T_front_chase = np.linalg.inv(front_cam_to_ego(args.nusc_root, args.scene_name)) @ chase_extrinsic()
+    cx, cz, pitch, args.fov = CHASE_PRESETS[args.preset]
+    T_ego_front = front_cam_to_ego(args.nusc_root, args.scene_name)
+    T_front_chase = np.linalg.inv(T_ego_front) @ chase_extrinsic(np.array([cx, 0.0, cz]), pitch)
+    if args.traj_json:
+        T_front_ego = torch.tensor(np.linalg.inv(T_ego_front), dtype=torch.float32, device=device)
+        ego = (front_c2w @ T_front_ego).cpu().numpy()  # 자차 → 월드
+        json.dump({"fps": 10, "ego_to_world": np.round(ego, 4).tolist(),
+                   "presets": {k: dict(x=v[0], z=v[1], pitch=v[2], hfov=v[3]) for k, v in CHASE_PRESETS.items()}},
+                  open(args.traj_json, "w"))
     T_front_chase = torch.tensor(T_front_chase, dtype=torch.float32, device=device)
     W, H = args.width, args.height
     f = W / (2 * math.tan(math.radians(args.fov) / 2))
@@ -155,7 +169,7 @@ def main():
                 imageio.imwrite(os.path.join(args.out, f"chase_{i:03d}.jpg"), rgb, quality=92)
     writer.close()
     ms = np.array(times[5:]) * 1000  # 앞 5프레임은 warm-up
-    stats = dict(frames=n, width=W, height=H, fov=args.fov,
+    stats = dict(frames=n, width=W, height=H, preset=args.preset, fov=args.fov,
                  render_ms_mean=round(float(ms.mean()), 2), render_ms_p95=round(float(np.percentile(ms, 95)), 2),
                  peak_mem_gib=round(torch.cuda.max_memory_allocated() / 2**30, 2))
     json.dump(stats, open(os.path.join(args.out, "render_stats.json"), "w"), indent=1)

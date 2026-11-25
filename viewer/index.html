@@ -1,0 +1,145 @@
+<!doctype html>
+<!-- 나만의 리얼리티뷰 1.0 웹 뷰어 — 책 03-6
+     같은 폴더에 scene.splat(export_splat.py)과 trajectory.json(render_chase_drivestudio.py --traj_json)을 두고
+     python -m http.server 8000 으로 띄운 뒤 http://localhost:8000 을 연다. -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>리얼리티뷰 1.0 뷰어</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #eee; font: 14px sans-serif; overflow: hidden; }
+  #ui { position: fixed; left: 12px; right: 12px; bottom: 12px; display: flex; gap: 10px; align-items: center;
+        background: rgba(0,0,0,.55); padding: 8px 12px; border-radius: 8px; flex-wrap: wrap; }
+  #ui input[type=range] { flex: 1; min-width: 160px; }
+  #msg { position: fixed; left: 12px; top: 12px; background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 6px; }
+  button, select { font: inherit; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "@mkkellogg/gaussian-splats-3d": "https://cdn.jsdelivr.net/npm/@mkkellogg/gaussian-splats-3d@0.4.7/build/gaussian-splats-3d.module.js"
+} }
+</script>
+</head>
+<body>
+<div id="msg">장면 불러오는 중…</div>
+<div id="ui">
+  <button id="play">일시정지</button>
+  <input id="seek" type="range" min="0" max="0" value="0" step="0.01">
+  <span id="frame">0</span>
+  <select id="preset"><option value="book">이 책 추격 카메라</option><option value="dashsplat">dashsplat 추격 카메라</option></select>
+  <label><input id="free" type="checkbox"> 자유 시점</label>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import * as GS from "@mkkellogg/gaussian-splats-3d";
+
+const traj = await (await fetch("trajectory.json")).json();
+const poses = traj.ego_to_world.map(m => new THREE.Matrix4().set(...m.flat()));  // 자차 → 월드 (행 우선)
+const N = poses.length;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fb4c8);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.3, 2000);
+camera.up.set(0, 0, 1);  // 월드 좌표는 z가 위
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enabled = false;
+
+// 가우시안 장면
+const splats = new GS.DropInViewer({ sharedMemoryForWorkers: false, gpuAcceleratedSort: false });
+scene.add(splats);
+await splats.addSplatScene("scene.splat", { format: GS.SceneFormat.Splat, showLoadingUI: false, splatAlphaRemovalThreshold: 5 });
+document.getElementById("msg").textContent = "리얼리티뷰 1.0 — 가우시안 배경 + 자차 모델 (다른 차·보행자는 표시 안 함)";
+
+// 자차 모델: compose_realityview.py와 같은 치수, 객실만 직육면체로 단순화 (뒷바퀴 축 중심 지면 원점, x 앞, y 왼쪽, z 위)
+const ego = new THREE.Group();
+const mat = c => new THREE.MeshLambertMaterial({ color: c });
+function addBox(x0, x1, y0, y1, z0, z1, color) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat(color));
+  m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  ego.add(m);
+}
+addBox(-0.95, 3.70, -0.92, 0.92, 0.28, 0.86, 0xe0e2e8);   // 차체
+addBox(-0.25, 1.85, -0.80, 0.80, 0.86, 1.40, 0x2e3542);   // 객실 유리
+addBox(-0.30, 1.70, -0.75, 0.75, 1.40, 1.44, 0xe0e2e8);   // 지붕
+addBox(-0.97, -0.95, 0.50, 0.86, 0.66, 0.78, 0xd81419);   // 후미등
+addBox(-0.97, -0.95, -0.86, -0.50, 0.66, 0.78, 0xd81419);
+for (const x of [0, 2.85]) for (const y of [-0.82, 0.82]) {
+  const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 16), mat(0x151517));
+  w.position.set(x, y, 0.33);
+  ego.add(w);
+}
+ego.matrixAutoUpdate = false;
+scene.add(ego);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(-0.4, 0.3, 0.87);
+scene.add(sun);
+
+// 추격 카메라: 자차 기준 오프셋 + 아래로 숙임. OpenCV 카메라 축 → three.js 카메라 축(y·z 반전)
+function chaseFromEgo(p) {
+  const pitch = THREE.MathUtils.degToRad(p.pitch);
+  const z = new THREE.Vector3(Math.cos(pitch), 0, -Math.sin(pitch));
+  const x = new THREE.Vector3(0, -1, 0);
+  const y = new THREE.Vector3().crossVectors(z, x);
+  const cv = new THREE.Matrix4().makeBasis(x, y, z).setPosition(p.x, 0, p.z);
+  return cv.multiply(new THREE.Matrix4().makeScale(1, -1, -1));
+}
+
+// 프레임 사이를 보간한 자차 자세
+function egoAt(t) {
+  const i = Math.min(Math.floor(t), N - 2), a = t - i;
+  const p0 = new THREE.Vector3(), q0 = new THREE.Quaternion(), p1 = new THREE.Vector3(), q1 = new THREE.Quaternion(), s = new THREE.Vector3();
+  poses[i].decompose(p0, q0, s);
+  poses[i + 1].decompose(p1, q1, s);
+  return new THREE.Matrix4().compose(p0.lerp(p1, a), q0.slerp(q1, a), new THREE.Vector3(1, 1, 1));
+}
+
+const ui = { play: document.getElementById("play"), seek: document.getElementById("seek"),
+             frame: document.getElementById("frame"), preset: document.getElementById("preset"), free: document.getElementById("free") };
+ui.seek.max = N - 1;
+let t = 0, playing = true, last = performance.now();
+ui.play.onclick = () => { playing = !playing; ui.play.textContent = playing ? "일시정지" : "재생"; };
+ui.seek.oninput = () => { t = +ui.seek.value; };
+ui.free.onchange = () => {
+  controls.enabled = ui.free.checked;
+  if (ui.free.checked) controls.target.setFromMatrixPosition(ego.matrix);
+};
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize);
+
+renderer.setAnimationLoop(now => {
+  if (playing) t = (t + (now - last) / 1000 * traj.fps) % (N - 1);
+  last = now;
+  ui.seek.value = t;
+  ui.frame.textContent = `${Math.floor(t)} / ${N - 1}`;
+  const E = egoAt(t);
+  ego.matrix.copy(E);
+  if (!ui.free.checked) {
+    const p = traj.presets[ui.preset.value];
+    const m = E.clone().multiply(chaseFromEgo(p));
+    m.decompose(camera.position, camera.quaternion, new THREE.Vector3());
+    // 가로 화각을 지키도록 세로 화각 계산
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(p.hfov) / 2) / camera.aspect));
+    camera.updateProjectionMatrix();
+  } else {
+    controls.update();
+  }
+  renderer.render(scene, camera);
+});
+window.__viewerReady = true;
+</script>
+</body>
+</html>
