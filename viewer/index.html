@@ -125,7 +125,8 @@ function resize() {
 addEventListener("resize", resize);
 
 renderer.setAnimationLoop(now => {
-  if (playing) t = (t + (now - last) / 1000 * traj.fps) % (N - 1);
+  // 첫 호출의 타임스탬프가 performance.now()보다 앞설 수 있어 음수 경과 시간은 버린다
+  if (playing) t = (t + Math.max(0, now - last) / 1000 * traj.fps) % (N - 1);
   last = now;
   ui.seek.value = t;
   ui.frame.textContent = `${Math.floor(t)} / ${N - 1}`;
