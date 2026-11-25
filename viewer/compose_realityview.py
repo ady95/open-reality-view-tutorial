@@ -105,15 +105,19 @@ def render_ego(preset, W, H, ss=3):
     return img.resize((W, H), Image.LANCZOS)
 
 
-def path_overlay(preset, W, H, ego_to_world, i, horizon=30, half_width=0.9, ss=2):
-    """i번째 프레임에서 앞으로 horizon프레임(10Hz면 3초) 동안 자차가 지나갈 노면 띠를 그린다.
-    녹화 데이터이므로 '계획 경로' 대신 실제로 지나간 궤적을 쓴다."""
+def path_overlay(preset, W, H, ego_to_world, i, horizon=60, half_width=0.9, start_x=3.7, ss=2):
+    """i번째 프레임에서 앞으로 horizon프레임(10Hz면 6초) 동안 자차가 지나갈 노면 띠를 그린다.
+    녹화 데이터이므로 '계획 경로' 대신 실제로 지나간 궤적을 쓴다. 자차 밑은 어차피 가려지므로
+    앞범퍼(뒷바퀴 축에서 start_x m)부터 그린다."""
     R, t, f = camera(preset, W, H)
     inv = np.linalg.inv(ego_to_world[i])
     pts = [(inv @ ego_to_world[j])[:3, 3] for j in range(i, min(i + horizon, len(ego_to_world)))]
     if len(pts) < 2:
         return None
     pts = np.array(pts)
+    pts = pts[pts[:, 0] > start_x]
+    if len(pts) < 2:
+        return None
     pts[:, 2] = 0.02  # 노면 위
     d = np.gradient(pts[:, :2], axis=0)
     n = np.stack([-d[:, 1], d[:, 0]], 1)
@@ -138,7 +142,7 @@ def main():
     ap.add_argument("--preset", choices=sorted(PRESETS), default="book")
     ap.add_argument("--out", required=True)
     ap.add_argument("--save_frames", default="95")
-    ap.add_argument("--traj", default=None, help="trajectory.json을 주면 앞으로 3초 경로를 노면에 그린다")
+    ap.add_argument("--traj", default=None, help="trajectory.json을 주면 앞으로 6초 경로를 노면에 그린다")
     args = ap.parse_args()
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
 
