@@ -105,6 +105,32 @@ def render_ego(preset, W, H, ss=3):
     return img.resize((W, H), Image.LANCZOS)
 
 
+def path_overlay(preset, W, H, ego_to_world, i, horizon=30, half_width=0.9, ss=2):
+    """i번째 프레임에서 앞으로 horizon프레임(10Hz면 3초) 동안 자차가 지나갈 노면 띠를 그린다.
+    녹화 데이터이므로 '계획 경로' 대신 실제로 지나간 궤적을 쓴다."""
+    R, t, f = camera(preset, W, H)
+    inv = np.linalg.inv(ego_to_world[i])
+    pts = [(inv @ ego_to_world[j])[:3, 3] for j in range(i, min(i + horizon, len(ego_to_world)))]
+    if len(pts) < 2:
+        return None
+    pts = np.array(pts)
+    pts[:, 2] = 0.02  # 노면 위
+    d = np.gradient(pts[:, :2], axis=0)
+    n = np.stack([-d[:, 1], d[:, 0]], 1)
+    n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-9
+    left, right = pts.copy(), pts.copy()
+    left[:, :2] += n * half_width
+    right[:, :2] -= n * half_width
+    poly = np.concatenate([left, right[::-1]])
+    c = (poly - t) @ R
+    if (c[:, 2] <= 0.1).any():
+        return None
+    uv = np.stack([f * c[:, 0] / c[:, 2] + W / 2, f * c[:, 1] / c[:, 2] + H / 2], 1) * ss
+    img = Image.new("RGBA", (W * ss, H * ss), (0, 0, 0, 0))
+    ImageDraw.Draw(img).polygon([tuple(q) for q in uv], fill=(40, 120, 255, 110))
+    return img.resize((W, H), Image.LANCZOS)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--frames", required=True, help="추격 시점 PNG 폴더 (렌더 또는 Difix 보정 결과)")
@@ -112,6 +138,7 @@ def main():
     ap.add_argument("--preset", choices=sorted(PRESETS), default="book")
     ap.add_argument("--out", required=True)
     ap.add_argument("--save_frames", default="95")
+    ap.add_argument("--traj", default=None, help="trajectory.json을 주면 앞으로 3초 경로를 노면에 그린다")
     args = ap.parse_args()
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
 
@@ -121,11 +148,16 @@ def main():
     ego.save(os.path.splitext(args.out)[0] + "_ego.png")
     cover = float((np.asarray(ego)[..., 3] > 128).mean())  # 자차(그림자 포함)가 가리는 화면 비율
 
+    poses = np.array(json.load(open(args.traj))["ego_to_world"]) if args.traj else None
     keep = {int(i) for i in args.save_frames.split(",")}
     w = imageio.get_writer(args.out, fps=10, macro_block_size=1, quality=8)
     for i, fp in enumerate(files):
         frame = Image.open(fp).convert("RGBA")
-        frame.alpha_composite(ego)
+        if poses is not None:
+            band = path_overlay(args.preset, W, H, poses, i)
+            if band is not None:
+                frame.alpha_composite(band)
+        frame.alpha_composite(ego)  # 경로 위에 자차
         frame = frame.convert("RGB")
         if args.ref:
             ref = Image.open(os.path.join(args.ref, os.path.basename(fp))).convert("RGB")
