@@ -24,9 +24,12 @@ PROMPT = "remove degradation"
 WORK_SIZE = (1024, 576)  # Difix 학습 해상도(16:9). 입력을 이 크기로 바꿔 보정한 뒤 원래 크기로 되돌린다
 
 
+DTYPE = torch.float32
+
+
 def load_pipe(model_id):
     from pipeline_difix import DifixPipeline
-    pipe = DifixPipeline.from_pretrained(model_id, trust_remote_code=True)
+    pipe = DifixPipeline.from_pretrained(model_id, trust_remote_code=True, torch_dtype=DTYPE)
     pipe.set_progress_bar_config(disable=True)
     return pipe.to("cuda")
 
@@ -84,7 +87,7 @@ def heldout(args):
     perf = {}
     for key, model_id, rdir in (("difix", "nvidia/difix", None), ("difix_ref", "nvidia/difix_ref", ref_dir)):
         pipe = load_pipe(model_id)
-        perf[key] = run_dir(pipe, names, f"{root}/heldout/render", f"{root}/heldout/{key}", rdir)
+        perf[key] = run_dir(pipe, names, f"{root}/heldout/render", f"{root}/heldout/{key}{args.tag}", rdir)
         del pipe
         torch.cuda.empty_cache()
 
@@ -94,7 +97,7 @@ def heldout(args):
         gt = to_t(f"{root}/heldout/gt/{n}")
         base_err = None
         for k in rows:
-            x = to_t(f"{root}/heldout/{k}/{n}")
+            x = to_t(f"{root}/heldout/{k if k == 'render' else k + args.tag}/{n}")
             err = (x - gt).abs().mean(1)  # 픽셀별 오차
             rows[k]["psnr"].append(float(-10 * torch.log10(((x - gt) ** 2).mean())))
             rows[k]["ssim"].append(float(ssim(x, gt, data_range=1.0)))
@@ -104,8 +107,8 @@ def heldout(args):
             # 보정 후 오차가 렌더보다 0.05(8bit 기준 약 13) 이상 커진 픽셀 = 정답에서 멀어진 픽셀
             rows[k]["worse_px"].append(float(((err - base_err) > 0.05).float().mean()))
     summary = {k: {m: round(float(np.mean(v)), 4) for m, v in r.items()} for k, r in rows.items()}
-    result = dict(pairs=len(names), work_size=WORK_SIZE, metrics=summary, perf=perf)
-    json.dump(result, open(f"{root}/heldout_metrics.json", "w"), indent=1)
+    result = dict(pairs=len(names), work_size=WORK_SIZE, dtype=str(DTYPE), metrics=summary, perf=perf)
+    json.dump(result, open(f"{root}/heldout_metrics{args.tag}.json", "w"), indent=1)
     print(json.dumps(result, indent=1))
 
 
@@ -146,8 +149,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["heldout", "chase"])
     ap.add_argument("--root", default="/work/outputs/03-5")
+    ap.add_argument("--fp16", action="store_true", help="반정밀도(FP16)로 실행. 기본은 FP32")
+    ap.add_argument("--tag", default="", help="결과 폴더·파일 이름 뒤에 붙일 꼬리표 (예: _fp16)")
     ap.add_argument("--images", default="/work/data/drivestudio/nuscenes/processed_10Hz/mini/000/images")
     args = ap.parse_args()
+    global DTYPE
+    DTYPE = torch.float16 if args.fp16 else torch.float32
     {"heldout": heldout, "chase": chase}[args.mode](args)
 
 
