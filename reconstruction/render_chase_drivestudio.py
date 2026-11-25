@@ -69,6 +69,27 @@ def build_render_item(c2w, K, H, W, frame_idx, normed_time, device):
     return image_infos, cam_infos
 
 
+def export_heldout(trainer, dataset, out_dir, device):
+    """학습에 쓰지 않은 시점(test_timesteps)의 6개 카메라 렌더와 실제 사진을 PNG 쌍으로 저장한다."""
+    for sub in ("render", "gt"):
+        os.makedirs(os.path.join(out_dir, sub), exist_ok=True)
+    n = dataset.num_img_timesteps
+    with torch.no_grad():
+        for t in dataset.test_timesteps:
+            for c, cam in dataset.pixel_source.camera_data.items():
+                gt = cam.images[t]
+                H, W = gt.shape[:2]
+                c2w = cam.cam_to_worlds[t].to(device)
+                K = cam.intrinsics[t].to(device)
+                image_infos, cam_infos = build_render_item(c2w, K, H, W, int(t), int(t) / max(n - 1, 1), device)
+                out = trainer(image_infos=image_infos, camera_infos=cam_infos, novel_view=True)
+                name = f"t{int(t):03d}_c{int(c)}.png"
+                imageio.imwrite(os.path.join(out_dir, "render", name),
+                                (out["rgb"].clamp(0, 1).cpu().numpy() * 255).astype(np.uint8))
+                imageio.imwrite(os.path.join(out_dir, "gt", name), (gt.cpu().numpy() * 255).astype(np.uint8))
+    print("held-out pairs:", len(dataset.test_timesteps) * len(dataset.pixel_source.camera_data))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--resume_from", required=True)
@@ -79,6 +100,9 @@ def main():
     ap.add_argument("--width", type=int, default=800)
     ap.add_argument("--height", type=int, default=450)
     ap.add_argument("--save_frames", default="0,95,190")
+    ap.add_argument("--png_dir", default=None, help="추격 시점 전 프레임을 PNG로 저장 (03-5 Difix 입력)")
+    ap.add_argument("--heldout_dir", default=None,
+                    help="학습에서 뺀 시점의 렌더/원본 쌍을 저장 (03-5 정량 평가). 저장 후 종료")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     device = torch.device("cuda")
@@ -92,6 +116,10 @@ def main():
         test_set_indices=dataset.test_timesteps, scene_aabb=dataset.get_aabb().reshape(2, 3), device=device)
     trainer.resume_from_checkpoint(ckpt_path=args.resume_from, load_only_model=True)
     trainer.set_eval()
+
+    if args.heldout_dir:
+        export_heldout(trainer, dataset, args.heldout_dir, device)
+        return
 
     front_c2w = dataset.pixel_source.camera_data[0].cam_to_worlds.to(device)  # cam 0 = CAM_FRONT
     T_front_chase = np.linalg.inv(front_cam_to_ego(args.nusc_root, args.scene_name)) @ chase_extrinsic()
@@ -115,6 +143,14 @@ def main():
             times.append(time.perf_counter() - t0)
             rgb = (out["rgb"].clamp(0, 1).cpu().numpy() * 255).astype(np.uint8)
             writer.append_data(rgb)
+            if args.png_dir:
+                os.makedirs(args.png_dir, exist_ok=True)
+                imageio.imwrite(os.path.join(args.png_dir, f"{i:03d}.png"), rgb)
+                # Difix-ref 기준 이미지: 같은 시각의 전방 카메라 실제 사진
+                ref_dir = args.png_dir.rstrip("/") + "_ref"
+                os.makedirs(ref_dir, exist_ok=True)
+                ref = dataset.pixel_source.camera_data[0].images[i]
+                imageio.imwrite(os.path.join(ref_dir, f"{i:03d}.png"), (ref.cpu().numpy() * 255).astype(np.uint8))
             if i in keep:
                 imageio.imwrite(os.path.join(args.out, f"chase_{i:03d}.jpg"), rgb, quality=92)
     writer.close()
