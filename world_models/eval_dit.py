@@ -90,6 +90,7 @@ def main():
     ap.add_argument("--no_motion", action="store_true")
     ap.add_argument("--moving", type=float, default=2.0, help="'움직이는 구간'으로 볼 자차 속도 하한 (m/s)")
     ap.add_argument("--save", type=int, default=6, help="저장할 예시 수")
+    ap.add_argument("--video", action="store_true", help="rollout 전 구간을 MP4로 저장 (정답 위, 생성 아래)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -179,6 +180,12 @@ def main():
                 curves.append(np.array(curve))
                 copies.append(np.array(copy))
                 speeds.append(float(run["motion"][s:s + len(curve), :2].norm(dim=1).mean()) * 10)
+                if args.video:
+                    # 위: 시뮬레이션 GT, 아래: 생성. 10Hz로 수집했으므로 10fps로 저장
+                    import imageio
+                    imageio.mimwrite(os.path.join(args.out, f"roll_{name}_{s}.mp4"),
+                                     [np.concatenate([gt_image(run, s + k), fr], 0) for k, fr in enumerate(frames)],
+                                     fps=10, quality=8, macro_block_size=8)
                 for k in (0, 40, 100, 196):
                     if k < len(frames):
                         Image.fromarray(np.concatenate([gt_image(run, s + k), frames[k]], 0)).save(

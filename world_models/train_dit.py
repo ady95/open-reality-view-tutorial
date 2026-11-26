@@ -197,6 +197,9 @@ def main():
     ap.add_argument("--self_ctx", type=float, default=0.0,
                     help="05-6: 문맥을 모델이 직접 생성한 프레임으로 바꾸는 샘플 비율 (0이면 끔)")
     ap.add_argument("--self_nfe", type=int, default=1, help="자기 문맥을 만들 때의 평가 횟수 (MeanFlow는 1)")
+    ap.add_argument("--data2", default="", help="06-1: 섞을 두 번째 전처리 폴더 (실사 Pseudo-GT)")
+    ap.add_argument("--runs2", default="*", help="06-1: 두 번째 폴더에서 쓸 런 (쉼표 구분 glob)")
+    ap.add_argument("--mix", type=float, default=0.0, help="06-1: 배치 중 두 번째 데이터의 비율 (1이면 그것만)")
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--accum", type=int, default=1, help="배치를 나눠 처리할 횟수 (메모리 절약)")
     ap.add_argument("--lr", type=float, default=2e-4)
@@ -213,15 +216,29 @@ def main():
 
     ds = ChunkDataset(args.data, args.runs.split(","), args.ctx, args.chunk, args.cam_pool, args.feat_file,
                       pre=args.chunk if args.self_ctx > 0 else 0)
-    dl = DataLoader(ds, batch_size=args.batch, shuffle=True, num_workers=6, drop_last=True,
-                    pin_memory=True, persistent_workers=True)
+    sampler = None
+    if args.data2:
+        # 06-1 데이터 혼합: 두 번째 데이터(실사 Pseudo-GT)를 샘플 수와 무관하게 mix 비율로 뽑는다
+        ds2 = ChunkDataset(args.data2, args.runs2.split(","), args.ctx, args.chunk, args.cam_pool, args.feat_file)
+        n1, n2 = len(ds), len(ds2)
+        if args.mix >= 1.0:
+            ds, n1 = ds2, 0
+            w = torch.ones(n2, dtype=torch.double)
+        else:
+            ds = torch.utils.data.ConcatDataset([ds, ds2])
+            w = torch.cat([torch.full((n1,), (1 - args.mix) / n1, dtype=torch.double),
+                           torch.full((n2,), args.mix / n2, dtype=torch.double)])
+        sampler = torch.utils.data.WeightedRandomSampler(w, num_samples=len(w), replacement=True)
+        print(f"mix {args.mix} | set1 {n1} samples | set2 {n2} samples", flush=True)
+    dl = DataLoader(ds, batch_size=args.batch, shuffle=sampler is None, sampler=sampler, num_workers=6,
+                    drop_last=True, pin_memory=True, persistent_workers=True)
     f0 = ds[0][1]
     model = VideoDiT(args.size, cam_tokens=f0.shape[2], feat_dim=f0.shape[3]).cuda()
     if args.init:
         model.load_state_dict(torch.load(args.init, map_location="cuda")["ema"])
     ema = copy.deepcopy(model).eval().requires_grad_(False)
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"runs {len(ds.runs)} | samples {len(ds)} | params {n_params / 1e6:.1f}M | mode {args.mode}", flush=True)
+    print(f"runs {len(getattr(ds, 'runs', []))} | samples {len(ds)} | params {n_params / 1e6:.1f}M | mode {args.mode}", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.0, betas=(0.9, 0.99))
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 1000))
     log = open(os.path.join(args.out, "log.jsonl"), "a")
