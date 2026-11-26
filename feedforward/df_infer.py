@@ -127,6 +127,25 @@ def infer(model, inputs):
     return outputs
 
 
+def infer_amp(model, inputs, amp):
+    """07-1: 깊이 네트워크(인코더·디코더)만 반정밀도 자동 혼합으로 돌린다.
+    가우시안 단계는 카메라 행렬의 역행렬(torch.inverse)이 half를 지원하지 않아 float32로 둔다."""
+    if amp == "none":
+        return infer(model, inputs)
+    orig = model.predict_depth
+    fl = lambda v: v.float() if torch.is_tensor(v) and v.is_floating_point() else v
+
+    def half_depth(x):
+        with torch.autocast("cuda", dtype=torch.float16 if amp == "fp16" else torch.bfloat16):
+            out = orig(x)
+        return {k: ({kk: fl(vv) for kk, vv in v.items()} if isinstance(v, dict) else fl(v)) for k, v in out.items()}
+    model.predict_depth = half_depth
+    try:
+        return infer(model, inputs)
+    finally:
+        model.predict_depth = orig
+
+
 def collect(outputs, n_cams):
     """카메라 6대의 픽셀별 가우시안을 하나로 모은다 (자차 좌표계: x 앞, y 왼쪽, z 위)."""
     keys = [("xyz", 3), ("rot_maps", 4), ("scale_maps", 3), ("opacity_maps", 1)]
@@ -208,6 +227,7 @@ def main():
     ap.add_argument("--bg", default="1,1,1", help="가우시안이 없는 곳의 배경색 (저장소 기본값: 흰색)")
     ap.add_argument("--accum", default="", help="chase: 합칠 과거 프레임 간격 목록 (예: 6,12,18 = 약 0.5·1.0·1.5초 전)")
     ap.add_argument("--input_size", default=None, help="입력 크기 HxW (기본: 설정 파일의 352x640)")
+    ap.add_argument("--amp", choices=["none", "fp16", "bf16"], default="none", help="07-1: 신경망 추론 정밀도")
     ap.add_argument("--save_every", type=int, default=10, help="eval에서 이미지를 저장할 간격")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -253,7 +273,7 @@ def main():
                                 [x.unsqueeze(0) for x in v] if isinstance(v, list) and v and torch.is_tensor(v[0])
                                 else torch.from_numpy(v).unsqueeze(0) if isinstance(v, np.ndarray) else v)
                             for k, v in ds[i].items()})
-        outputs, ms = timed(lambda: infer(model, inputs))
+        outputs, ms = timed(lambda: infer_amp(model, inputs, args.amp))
         t_net.append(ms)
         if args.mode == "eval":
             def novel():
@@ -308,7 +328,7 @@ def main():
             save(img, f"{args.out}/frames/{i:03d}.png")
             save(inputs[("color", 0, 0)][0, 0], f"{args.out}/ref/{i:03d}.png")
 
-    stats = dict(mode=args.mode, scenes=args.scenes, frames=len(ds), weights=os.path.basename(args.weights),
+    stats = dict(mode=args.mode, scenes=args.scenes, frames=len(ds), weights=os.path.basename(args.weights), amp=args.amp,
                  input_size=[int(cfg["training"]["height"]), int(cfg["training"]["width"])],
                  net_ms=summarize(t_net), render_ms=summarize(t_render),
                  peak_mem_gib=round(torch.cuda.max_memory_allocated() / 2**30, 2))
