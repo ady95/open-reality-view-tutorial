@@ -1,5 +1,7 @@
 # open-reality-view-tutorial
 
+<a href="https://wikidocs.net/book/22323"><img src="docs/book-cover.jpg" alt="테슬라 리얼리티뷰 따라하기 표지" width="260" align="right"></a>
+
 위키독스 책 **「테슬라 리얼리티뷰 따라하기」**([https://wikidocs.net/book/22323](https://wikidocs.net/book/22323))의 예제 코드 저장소입니다.
 
 실제 차량이나 촬영 장비 없이, 공개 주행 데이터·CARLA·오픈소스 AI 모델만으로 차량 뒤 상공 가상 카메라 시점의 주행 영상을 만드는 세 가지 방법을 구현하고 비교합니다.
