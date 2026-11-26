@@ -1,0 +1,31 @@
+diff --git a/cosmos_transfer2/_src/predict2/text_encoders/text_encoder.py b/cosmos_transfer2/_src/predict2/text_encoders/text_encoder.py
+index 2ea3da5..3bd968b 100644
+--- a/cosmos_transfer2/_src/predict2/text_encoders/text_encoder.py
++++ b/cosmos_transfer2/_src/predict2/text_encoders/text_encoder.py
+@@ -67,7 +67,7 @@ class TextEncoderConfig:
+ 
+ 
+ class TextEncoder:
+-    def __init__(self, config: TextEncoderConfig, device: str = "cuda"):
++    def __init__(self, config: TextEncoderConfig, device: str = os.environ.get("COSMOS_TEXT_ENCODER_DEVICE", "cuda")):
+         self.config = config
+         self.device = device
+ 
+@@ -177,7 +177,7 @@ class TextEncoder:
+             else:
+                 # Do truncation:
+                 input_ids = input_ids.tolist()[:NUM_EMBEDDING_PADDING_TOKENS]
+-            input_ids = torch.LongTensor(input_ids).to(device="cuda")
++            input_ids = torch.LongTensor(input_ids).to(device=self.device)
+             input_ids_batch.append(input_ids)
+ 
+         input_ids_batch = torch.stack(input_ids_batch, dim=0)
+@@ -217,7 +217,7 @@ class TextEncoder:
+         else:
+             raise ValueError(f"Invalid embedding_concat_strategy: {self.config.embedding_concat_strategy}")
+ 
+-        return text_embeddings
++        return text_embeddings.to("cuda")
+ 
+ 
+ def get_reason1_embeddings(text: str):
