@@ -10,7 +10,8 @@
 |---|---|---|
 | Track A | 최적화 기반 3D Gaussian Splatting + Difix 보정 | 03장 |
 | Track B | Feed-forward 3DGS (DrivingForward 등) | 04장 |
-| Track C | 시각 특징 조건부 Video DiT + Flow Matching / MeanFlow + 자기회귀 생성 | 05장 |
+| Track C | 시각 특징 조건부 Video DiT + Flow Matching / MeanFlow + 자기회귀 생성 | 05~07장 |
+| 통합 | 세 Track을 한 화면에서 비교하는 Open Reality View Lab | 08장 |
 
 > 이 프로젝트는 Tesla, Inc.와 관련이 없는 독립적인 학습·연구용 자료입니다. 연구용 시각화이며 차량 제어나 운전 중 판단에 사용하지 마십시오.
 
@@ -35,21 +36,20 @@ docker run --rm --gpus "device=0" -v $PWD:/work -w /work \
 |---|---|---|
 | `env/` | GPU 환경 점검 스크립트 | 02-1 |
 | `docker/` | 프로젝트별 Dockerfile | 02장~ |
-| `datasets/` | 공개 데이터셋 어댑터 (nuScenes, Waymo, PandaSet 등) | 02-2, 02-5 |
-| `simulation/` | CARLA 데이터 생성 | 02-4 |
-| `geometry/` | 좌표 변환, 추격 카메라 포즈, 깊이 워핑 | 02-3 |
-| `reconstruction/` | DriveStudio · 3DGS · Difix | 03장 |
-| `feedforward/` | DrivingForward 등 | 04장 |
-| `world_models/` | Cosmos · Self-Forcing · Oasis | 05-1, 05-2 |
-| `models/` | Conditional Video DiT · MeanFlow 구현 | 05-3 ~ 05-6 |
-| `training/` | 학습 파이프라인 | 05장, 06장 |
-| `inference/` | 스트리밍 추론 | 05-6, 07장 |
-| `optimization/` | BF16 · INT8 · TensorRT | 07-1 |
-| `evaluation/` | 공통 평가 지표와 벤치마크 | 07-2 |
-| `viewer/` | Open Reality View Lab 통합 뷰어 | 03-6, 08-1 |
-| `experiments/` | 실험 설정과 결과 기록 | 전체 |
+| `datasets/` | nuScenes 확인, 공통 매니페스트 | 02-2, 02-5 |
+| `simulation/` | CARLA 데이터 수집, 클립 내보내기 | 02-4, 05-4, 06-2 |
+| `geometry/` | 좌표 변환, 추격 카메라 | 02-3 |
+| `reconstruction/` | DriveStudio 렌더, 3DGS 피팅, Difix 보정 | 03장 |
+| `viewer/` | 리얼리티뷰 1.0 합성·웹 뷰어 | 03-6 |
+| `feedforward/` | DrivingForward 추론 | 04-2, 07-1 |
+| `world_models/` | Self-Forcing 측정, Video DiT(FM·MeanFlow) 학습·평가, 실사 데이터 변환 | 05장, 06-1 |
+| `patches/` | Cosmos-Transfer2.5 텍스트 인코더 분리 패치 | 06-2 |
+| `optimization/` | 정밀도·compile·TensorRT·INT8·TAESD 벤치마크 | 07-1 |
+| `evaluation/` | 인과적 벤치마크, 결과 영상 생성 | 07-2, 05-6~07-2 |
+| `lab/` | Open Reality View Lab 통합 뷰어 | 08-1 |
+| `docs/` | README용 이미지 | - |
 
-책의 진행에 맞춰 디렉터리를 채워 갑니다. 아직 비어 있는 디렉터리는 해당 장이 공개될 때 추가됩니다.
+실행 순서와 각 실험의 조건은 책의 부록 D에 정리되어 있습니다.
 
 ## 라이선스
 
