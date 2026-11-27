@@ -1,0 +1,10 @@
+{
+    "name": "town10_chase_400",
+    "prompt": "A realistic dashcam-style video recorded from a camera mounted behind and above a white sedan driving through a modern city street on a clear sunny day. Photorealistic asphalt with worn lane markings, real concrete sidewalks, realistic buildings with glass facades, trees, parked cars and traffic lights. Natural lighting, real-world textures, high detail.",
+    "video_path": "input/town10_chase_400.mp4",
+    "guidance": 3,
+    "num_steps": 4,
+    "seed": 1,
+    "resolution": "480",
+    "edge": {"control_weight": 1.0}
+}

@@ -43,7 +43,7 @@ docker run --rm --gpus "device=0" -v $PWD:/work -w /work \
 | `viewer/` | 리얼리티뷰 1.0 합성·웹 뷰어 | 03-6 |
 | `feedforward/` | DrivingForward 추론 | 04-2, 07-1 |
 | `world_models/` | Self-Forcing 측정, Video DiT(FM·MeanFlow) 학습·평가, 실사 데이터 변환 | 05장, 06-1 |
-| `patches/` | Cosmos-Transfer2.5 텍스트 인코더 분리 패치 | 06-2 |
+| `patches/` | Cosmos-Transfer2.5 텍스트 인코더 분리 패치와 생성 설정(`configs/`) | 06-2 |
 | `optimization/` | 정밀도·compile·TensorRT·INT8·TAESD 벤치마크 | 07-1 |
 | `evaluation/` | 인과적 벤치마크, 결과 영상 생성 | 07-2, 05-6~07-2 |
 | `lab/` | Open Reality View Lab 통합 뷰어 | 08-1 |
